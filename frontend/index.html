@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Table Reservation</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h2>Reserve Your Table</h2>
+        <form id="reserve-form">
+            <div class="form-group">
+                <label for="reserve-first-name">Name</label>
+                <div class="name-fields">
+                    <input type="text" id="reserve-first-name" name="firstName" placeholder="First Name" required>
+                    <input type="text" id="reserve-last-name" name="lastName" placeholder="Last Name" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="reserve-email">Email</label>
+                <input type="email" id="reserve-email" name="email" placeholder="example@example.com">
+            </div>
+            <div class="form-group">
+                <label for="reserve-phone">Phone Number</label>
+                <input type="tel" id="reserve-phone" name="phone" placeholder="(000) 000-0000">
+            </div>
+            <hr>
+            <div class="form-group">
+                <label for="reserve-guest-count">Number of guests</label>
+                <select id="reserve-guest-count" name="guestCount" required>
+                    <option value="">Please Select</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="reserve-datetime">Reservation Date & Time</label>
+                <input type="datetime-local" id="reserve-datetime" name="reservationTime" required>
+            </div>
+            <button type="submit">Reserve</button>
+        </form>
+        <div id="reservation-message"></div>
+
+        <h2>Available Tables</h2>
+        <div id="available-tables"></div>
+
+        <h2>Reservations</h2>
+        <div id="reservations"></div>
+    </div>
+
+    <script>
+        const reserveForm = document.getElementById('reserve-form');
+        const reservationMessageDiv = document.getElementById('reservation-message');
+        const availableTablesDiv = document.getElementById('available-tables');
+        const reservationsDiv = document.getElementById('reservations');
+
+        // Helper function to format date
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}`;
+        }
+
+        async function fetchAvailableTables() {
+            try {
+                const response = await fetch('http://localhost:3000/tables');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                availableTablesDiv.innerHTML = '';
+
+                if (data.length === 0) {
+                    availableTablesDiv.textContent = "No tables available.";
+                    return;
+                }
+
+                data.forEach(table => {
+                    const tableDiv = document.createElement('div');
+                    tableDiv.classList.add('table', table.isReserved ? 'reserved' : 'available');
+                    tableDiv.textContent = `Table ${table.id} (Seats: ${table.seats})`;
+                    availableTablesDiv.appendChild(tableDiv);
+                });
+            } catch (error) {
+                console.error('Error fetching tables:', error);
+                availableTablesDiv.textContent = 'Failed to load available tables.';
+            }
+        }
+
+        async function fetchReservations() {
+            try {
+                const response = await fetch('http://localhost:3000/reservations');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                reservationsDiv.innerHTML = '';
+
+                if (data.length === 0) {
+                    reservationsDiv.textContent = "No reservations yet.";
+                    return;
+                }
+
+                data.forEach(reservation => {
+                    const reservationDiv = document.createElement('div');
+                    reservationDiv.classList.add('reservation');
+                    reservationDiv.innerHTML = `
+                        Reservation ID: ${reservation.id}<br>
+                        Name: ${reservation.firstName} ${reservation.lastName}<br>
+                        Table: ${reservation.tableId}<br>
+                        Guests: ${reservation.guestCount}<br>
+                        Time: ${formatDate(reservation.reservationTime)}
+                        <button data-id="${reservation.id}" class="cancel-button">Cancel</button>
+                        <button data-id="${reservation.id}" class="update-button">Update</button>
+                    `;
+                    reservationsDiv.appendChild(reservationDiv);
+                });
+
+                addCancelEventListeners();
+                addUpdateEventListeners();
+            } catch (error) {
+                console.error('Error fetching reservations:', error);
+                reservationsDiv.textContent = 'Failed to load reservations.';
+            }
+        }
+
+        function addCancelEventListeners() {
+            const cancelButtons = document.querySelectorAll('.cancel-button');
+            cancelButtons.forEach(button => {
+                button.addEventListener('click', async (event) => {
+                    const id = event.target.dataset.id;
+                    try {
+                        const response = await fetch(`http://localhost:3000/cancel/${id}`, {
+                            method: 'DELETE',
+                        });
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        const result = await response.json();
+                        if (response.ok) {
+                            reservationMessageDiv.textContent = result.message;
+                            reservationMessageDiv.style.color = 'green';
+                            fetchAvailableTables();
+                            fetchReservations();
+                        } else {
+                            reservationMessageDiv.textContent = result.error;
+                            reservationMessageDiv.style.color = 'red';
+                        }
+                    } catch (error) {
+                        console.error('Error cancelling reservation:', error);
+                        reservationMessageDiv.textContent = 'Failed to cancel reservation.';
+                        reservationMessageDiv.style.color = 'red';
+                    }
+                });
+            });
+        }
+
+        function addUpdateEventListeners() {
+            const updateButtons = document.querySelectorAll('.update-button');
+            updateButtons.forEach(button => {
+                button.addEventListener('click', async (event) => {
+                    const id = event.target.dataset.id;
+                    const newGuestCount = prompt("Enter new guest count:");
+                    if (!newGuestCount) return;
+
+                    try {
+                        const response = await fetch(`http://localhost:3000/update/${id}`, {
+                            method: 'PUT',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({ guestCount: newGuestCount }),
+                        });
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        const result = await response.json();
+                        if (response.ok) {
+                            reservationMessageDiv.textContent = result.message;
+                            reservationMessageDiv.style.color = 'green';
+                            fetchAvailableTables();
+                            fetchReservations();
+                        } else {
+                            reservationMessageDiv.textContent = result.error;
+                            reservationMessageDiv.style.color = 'red';
+                        }
+                    } catch (error) {
+                        console.error('Error updating reservation:', error);
+                        reservationMessageDiv.textContent = 'Failed to update reservation.';
+                        reservationMessageDiv.style.color = 'red';
+                    }
+                });
+            });
+        }
+
+        reserveForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const firstName = document.getElementById('reserve-first-name').value;
+            const lastName = document.getElementById('reserve-last-name').value;
+            const email = document.getElementById('reserve-email').value;
+            const phone = document.getElementById('reserve-phone').value;
+            const guestCount = document.getElementById('reserve-guest-count').value;
+            const reservationTime = document.getElementById('reserve-datetime').value;
+
+            const reservationData = {
+                firstName: firstName,
+                lastName: lastName,
+                email: email,
+                phone: phone,
+                guestCount: guestCount,
+                reservationTime: reservationTime
+            };
+
+            try {
+                const response = await fetch('http://localhost:3000/reserve', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(reservationData),
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const result = await response.json();
+                if (response.ok) {
+                    reservationMessageDiv.textContent = result.message;
+                    reservationMessageDiv.style.color = 'green';
+                    reserveForm.reset();
+                    fetchAvailableTables();
+                    fetchReservations();
+                } else {
+                    reservationMessageDiv.textContent = result.error;
+                    reservationMessageDiv.style.color = 'red';
+                }
+            } catch (error) {
+                console.error('Error reserving table:', error);
+                reservationMessageDiv.textContent = 'Failed to connect to the server.';
+                reservationMessageDiv.style.color = 'red';
+            }
+        });
+
+        // Initial load of available tables and reservations
+        fetchAvailableTables();
+        fetchReservations();
+    </script>
+</body>
+</html>
